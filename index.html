@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RTT View</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+
+  <body>
+    <!-- Connection panel: two fixed rows so the layout never reflows when a
+         select's selected option text changes length. -->
+    <header class="panel" id="connect-panel">
+      <div class="panel-row">
+        <div class="field grow">
+          <label for="dll-path">J-Link DLL</label>
+          <div class="row">
+            <input
+              id="dll-path"
+              type="text"
+              placeholder="留空自动检测（注册表 / 磁盘扫描）"
+              spellcheck="false"
+            />
+            <button id="browse-dll" class="ghost" title="手动选择 JLink_x64.dll">选择</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="probe">调试器</label>
+          <div class="row">
+            <select id="probe"><option value="0">自动 / 未检测</option></select>
+            <button id="refresh-probes" class="ghost" title="重新扫描">刷新</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-row">
+        <div class="field device-field">
+          <label for="device">目标芯片</label>
+          <div class="row">
+            <!-- Read-only display; the actual choice happens in the picker dialog
+                 (thousands of entries with RAM/Flash columns). -->
+            <input id="device" type="text" readonly placeholder="未选择（点「选择…」）" />
+            <button id="device-pick" class="ghost" title="从 J-Link 本地设备库选择">选择…</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="interface">接口</label>
+          <select id="interface">
+            <option value="SWD">SWD</option>
+            <option value="JTAG">JTAG</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="speed">速率 (kHz)</label>
+          <input id="speed" type="number" min="0" max="50000" step="100" value="4000" />
+        </div>
+
+        <div class="field">
+          <label for="up-channel">Up 通道</label>
+          <div class="row">
+            <input id="up-channel" type="number" min="0" max="15" value="0" />
+            <label class="check" title="轮询目标的所有 Up 通道，无需事先知道固件用的是哪个">
+              <input id="up-capture-all" type="checkbox" /> All
+            </label>
+          </div>
+        </div>
+
+        <div class="field actions">
+          <button id="connect" class="primary" title="直接连接，不复位目标。若刚烧录过或芯片停在复位向量而连不上，请用「复位并连接」。">连接</button>
+          <button id="connect-reset" class="ghost" title="连接时复位目标并让其运行，等价于 Keil 的 Reset and Run。当上一次下载/调试把芯片停在复位向量时可以恢复。">复位并连接</button>
+          <button id="test" class="ghost">测试</button>
+          <button id="reset" class="ghost" disabled title="通过 J-Link 复位目标，复位后继续运行">复位</button>
+          <button id="disconnect" class="ghost" disabled>断开</button>
+        </div>
+
+        <!-- Save controls live on this row and are pushed to the right edge, so
+             the log toolbar keeps to a single line instead of wrapping and
+             pushing the log view down. -->
+        <div class="field save-actions">
+          <!-- Options are generated from LOG_FONT_SIZES so the scale lives in one place. -->
+          <select
+            id="log-font-size"
+            class="font-size-select"
+            title="日志显示字号"
+            aria-label="日志显示字号"
+          ></select>
+          <select id="save-format" title="保存格式">
+            <option value="timestamp">带时间戳</option>
+            <option value="raw">原始数据</option>
+            <option value="csv">CSV</option>
+          </select>
+          <label class="check"><input id="save-append" type="checkbox" checked /> 追加</label>
+          <button id="save-toggle" class="primary">开始保存</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Log toolbar -->
+    <section class="toolbar">
+      <label class="check"><input id="opt-date" type="checkbox" checked /> 日期</label>
+      <label class="check"><input id="opt-time" type="checkbox" checked /> 时间</label>
+      <label class="check"><input id="opt-relative" type="checkbox" checked /> 相对秒</label>
+      <label class="check"><input id="opt-autoscroll" type="checkbox" checked /> 自动滚动</label>
+      <label class="check"><input id="opt-display" type="checkbox" checked /> 显示</label>
+      <span class="spacer"></span>
+      <button id="copy-selected" class="ghost">复制选中</button>
+      <button id="copy-all" class="ghost">复制全部</button>
+      <button id="clear" class="ghost">清空</button>
+    </section>
+
+    <!-- Log view: real DOM text nodes so text is selectable and Ctrl+C works -->
+    <main id="log" class="log" tabindex="0"></main>
+
+    <!-- Status bar -->
+    <footer class="statusbar">
+      <span id="status-state" class="badge off">未连接</span>
+      <span id="status-message" class="msg"></span>
+      <span class="spacer"></span>
+      <span id="stat-rate" class="stat">0 B/s</span>
+      <span id="stat-lines" class="stat">0 行</span>
+      <span id="stat-overflow" class="stat" title="主机溢出次数">溢出 0</span>
+      <span id="stat-saved" class="stat"></span>
+    </footer>
+
+    <!-- Target-device picker: the J-Link DLL's built-in database has thousands
+         of entries, so a real table with search beats an inline dropdown. -->
+    <div id="device-modal" class="modal" hidden>
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="device-modal-title">
+        <header class="modal-head">
+          <span class="modal-icon">◆</span>
+          <h2 id="device-modal-title">选择 J-Link 目标设备</h2>
+          <button id="device-close" class="modal-x" type="button" aria-label="关闭">✕</button>
+        </header>
+
+        <div class="modal-search">
+          <input
+            id="device-search"
+            type="text"
+            placeholder="搜索厂商、设备或内核，例如 ST、STM32G431、Cortex-M4"
+            spellcheck="false"
+            autocomplete="off"
+          />
+          <button id="device-search-clear" class="search-clear" type="button" aria-label="清空">✕</button>
+        </div>
+
+        <div class="table-wrap">
+          <table class="device-table">
+            <thead>
+              <tr>
+                <th class="col-vendor">厂商</th>
+                <th class="col-name">设备</th>
+                <th class="col-core">内核</th>
+                <th class="col-ram">RAM</th>
+                <th class="col-flash">Flash</th>
+              </tr>
+            </thead>
+            <tbody id="device-rows"></tbody>
+          </table>
+        </div>
+
+        <footer class="modal-foot">
+          <div class="modal-count">
+            共 <span id="device-total">0</span> 个本地设备，<br />当前显示 <span id="device-shown">0</span> 个
+          </div>
+          <span class="spacer"></span>
+          <button id="device-ok" class="primary" type="button" disabled>选择</button>
+          <button id="device-cancel" class="ghost" type="button">取消</button>
+        </footer>
+      </div>
+    </div>
+  </body>
+</html>

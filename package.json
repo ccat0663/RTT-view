@@ -1,0 +1,25 @@
+{
+  "name": "rtt-view",
+  "private": true,
+  "version": "1.0.2",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "tsc -p tsconfig.test.json --noEmit && node --test src/*.test.ts",
+    "build:portable": "tauri build --no-bundle",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2.7.3",
+    "@tauri-apps/plugin-opener": "^2"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/node": "^22.20.2",
+    "typescript": "~6.0.3",
+    "vite": "^8.0.16"
+  }
+}
