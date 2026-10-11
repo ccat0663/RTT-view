@@ -1,6 +1,6 @@
 [package]
 name = "rtt-view"
-version = "1.0.2"
+version = "1.0.3"
 description = "RTT View — view SEGGER RTT output with host timestamps"
 authors = ["you"]
 edition = "2021"

@@ -6,7 +6,7 @@ SEGGER 自带的 RTT Viewer 不会在日志前加时间戳，本项目补上这�
 
 界面基于 **Tauri v2 + WebView2**，采集与 J-Link DLL 的交互全部在 **Rust** 后端完成。
 
-当前版本 **v1.0.2**（窗口标题会显示版本号）。
+当前版本 **v1.0.3**（窗口标题会显示版本号）。
 
 ![RTT View 主界面](images.png)
 
