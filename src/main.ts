@@ -18,7 +18,7 @@ import {
   normalizeLogFontSize,
 } from "./log-font.ts";
 import { atBottom, classifyScrollEvent, followStep } from "./smooth-scroll.ts";
-import { hintActionFor } from "./log-view.ts";
+import { ctrlABelongsToTextField, hintActionFor } from "./log-view.ts";
 import { badgeForState, stateEndsSession, stateMeansConnected } from "./connection-state.ts";
 
 // ---------------------------------------------------------------------------
@@ -1121,14 +1121,51 @@ function wireUi() {
   });
 
   window.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
+    const mod = e.ctrlKey || e.metaKey;
+    if (!mod) return;
+    const key = e.key.toLowerCase();
+
+    if (key === "c") {
       const sel = selectionText();
       if (sel) {
         e.preventDefault();
         copyToClipboard(sel);
       }
+      return;
+    }
+
+    // Scope Ctrl+A to the log. Left to the browser it selects the whole document
+    // (toolbar + connection panel + status bar included), which is not what
+    // pressing it over the log should do. Real text fields keep the native
+    // select-all so editing still works — see `ctrlABelongsToTextField`.
+    if (key === "a") {
+      const active = document.activeElement as HTMLInputElement | null;
+      const inTextField = ctrlABelongsToTextField(
+        active?.tagName ?? "",
+        active?.getAttribute?.("type") ?? "",
+        active?.isContentEditable ?? false,
+      );
+      if (inTextField) return; // let the browser select the field's text
+      e.preventDefault();
+      selectLogContents();
     }
   });
+}
+
+/** Select every line in the log view, and keep following paused. */
+function selectLogContents() {
+  if (lineCount === 0) return;
+  const range = document.createRange();
+  range.selectNodeContents(els.log);
+  const sel = window.getSelection();
+  if (!sel) return;
+  sel.removeAllRanges();
+  sel.addRange(range);
+  // Selecting is a signal the user wants to read or copy, so stop the tail from
+  // tugging the selection away — same rule as an explicit mouse selection.
+  els.optAutoscroll.checked = false;
+  settings.autoscroll = false;
+  pinnedToBottom = false;
 }
 
 /** Re-render all retained lines from history (used when a display toggle changes). */
